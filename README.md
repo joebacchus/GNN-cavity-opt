@@ -57,8 +57,8 @@ simulated_annealing(data_generator, sname, n_trials=10, beta_values=10000, beta_
 - `data_generator`: ata generator containing the graph instances.
 - `sname`: Name of the output file.
 - `n_trials`: Number of annealing sweeps.
-- `beta_values`:
-- `beta_final`: 
+- `beta_values`: Number of $\beta$ (inverse temperature) values to iterate over.
+- `beta_final`: Final $\beta$ value.
 
 **Returns:** List of best ground state energies found for each problem instance.
 

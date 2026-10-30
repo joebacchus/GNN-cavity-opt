@@ -173,7 +173,6 @@ class MinSumGNN(nn.Module):
         n = data.number_of_nodes
         agg = torch.zeros((T, n), device=data.h_i.device).scatter_reduce(
             1, data.marg_index[0].unsqueeze(0).expand(T, -1),
-    """Parameters of one NodeMinSumGNN layer: W1, b (W1's bias), W2, u, w."""
             minsum(data.J, tau)[:, data.marg_index[1]], reduce="sum")
         return data.prior + data.h_i + agg
 

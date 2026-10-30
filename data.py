@@ -51,6 +51,7 @@ def data_from_networkx(G, device, field_noise=1e-15):
       edge_index    [2, M]   for each message (i<-j): row 0 = i, row 1 = j
       message_index [2, K]   pairs (target ν_{i<-j}, source ν_{j<-k}), k ≠ i
       marg_index    [2, ·]   pairs (node i, incoming message ν_{i<-j})
+      reverse_index [M]      index of the reverse message: (i<-j) -> (j<-i)
       h_i, J, message_J, prior — fields and couplings on each graph.
     """
     edges = sorted(((i, j) for e in G.edges() for i, j in (e, e[::-1])),
@@ -85,6 +86,7 @@ def data_from_networkx(G, device, field_noise=1e-15):
     data.edge_index    = torch.tensor([src, dst],                 dtype=torch.long, device=device)
     data.message_index = torch.tensor([message_src, message_dst], dtype=torch.long, device=device)
     data.marg_index    = torch.tensor([marg_src, marg_dst],       dtype=torch.long, device=device)
+    data.reverse_index = torch.tensor([messages[(j, i)] for (i, j) in edges], dtype=torch.long, device=device)
     data.h_i       = torch.tensor(h_i,       dtype=torch.float32, device=device)
     data.J         = torch.tensor(J,         dtype=torch.float32, device=device)
     data.message_J = torch.tensor(message_J, dtype=torch.float32, device=device)

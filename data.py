@@ -3,7 +3,11 @@ import torch
 import numpy as np
 from torch_geometric.data import Data
 
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEV = torch.device(
+    "cuda" if torch.cuda.is_available()
+    else "mps" if torch.backends.mps.is_available()
+    else "cpu"
+)
 
 def random_recursive_tree(n):
     parents = np.array([np.random.randint(i) for i in range(1, n)])

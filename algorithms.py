@@ -300,7 +300,7 @@ def test(model, data_generator, fname, sname, dec=False):
         if dec:
             z = decimate(model, data, n_trials=10)
         else:
-            z = torch.tanh(model(data, n_trials=10))
+            z = model(data, n_trials=10)
         H = energy(torch.where(z >= 0, 1.0, -1.0), data)
         minH[idx] = min(H.detach().cpu().tolist())
     os.makedirs(os.path.dirname(sname), exist_ok=True)

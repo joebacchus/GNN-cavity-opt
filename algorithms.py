@@ -192,6 +192,61 @@ class MinSumGNN(nn.Module):
         tau = self.output(torch.cat([nu.unsqueeze(-1), y], dim=-1)).squeeze(-1)
         return self.update_marg(data, T, tau)
 
+# ---- Node-based MinSum + GNN ----------------------------------------------
+
+class NodeMinSumLayer(nn.Module):
+    def __init__(self, width):
+        super().__init__()
+        self.W1 = nn.Linear(width, width, bias=True)
+        self.W2 = nn.Linear(width, width, bias=False)
+        self.u  = nn.Parameter(torch.empty(width).uniform_(-1, 1) / (width + 1) ** 0.5)
+        self.w  = nn.Parameter(torch.zeros(width))
+        for L in (self.W1, self.W2):
+            weight_initializer(L.weight)
+        nn.init.zeros_(self.W1.bias)
+
+class NodeMinSumGNN(nn.Module):
+    """
+    Each layer with parameters W1, b, W2, u, w:
+
+        ν_i      = h_i + p_i + Σ_{j∈∂i} m_{i<-j}                          marginal field
+        y_i      ← tanh(W1 y_i + b + W2 mean_{j∈∂i} J_ij y_j + u ν_i)     GNN
+        m_{i<-j} ← ½ (m_{i<-j} + f(J_ij, ν_j + w·y_j − m_{j<-i}) )        damped min-sum
+
+    marg_i = ν_i + o·y_i, with ν from the final edge terms.
+    Initially m_{i<-j} = f(J_ij, ε) (ε ~ N(0,1)) and y_i = 1. w and o start at
+    zero so untrained model is exactly damped min-sum."""
+
+    def __init__(self, width, depth):
+        super().__init__()
+        self.width, self.depth = width, depth
+        self.layers = nn.ModuleList(NodeMinSumLayer(width) for _ in range(depth))
+        self.o = nn.Parameter(torch.zeros(width))
+
+    def marginal(self, data, T, m):
+        """ν_i = h_i + p_i + Σ_{j∈∂i} m_{i<-j}."""
+        return data.prior + data.h_i + torch.zeros((T, data.number_of_nodes), device=m.device).index_add_(
+            1, data.edge_index[0], m)
+
+    def neighbour_mean(self, data, y):
+        """mean_{j∈∂i} J_ij y_j."""
+        i, j = data.edge_index
+        deg = torch.bincount(i, minlength=data.number_of_nodes).clamp(min=1).view(1, -1, 1)
+        return torch.zeros_like(y).index_add_(1, i, data.J.view(1, -1, 1) * y[:, j]) / deg
+
+    def forward(self, data, n_trials=1):
+        T, n, dev = n_trials, data.number_of_nodes, data.h_i.device
+        j = data.edge_index[1]
+        m = minsum(data.J, torch.randn(T, len(data.messages), device=dev))
+        y = torch.ones(T, n, self.width, device=dev)
+        for L in self.layers:
+            ν = self.marginal(data, T, m)
+            y = torch.tanh(L.W1(y) + L.W2(self.neighbour_mean(data, y)) + ν.unsqueeze(-1) * L.u)
+            tmp = (ν + y @ L.w)[:, j] - m[:, data.reverse_index] # ν_j + w·y_j − m_{j<-i}
+            m = 0.5 * m + 0.5 * minsum(data.J, tmp)
+        return self.marginal(data, T, m) + y @ self.o
+
+
 # ---- Decimation -----------------------------------------------------------
 
 @torch.no_grad()
@@ -245,7 +300,7 @@ def test(model, data_generator, fname, sname, dec=False):
         if dec:
             z = decimate(model, data, n_trials=10)
         else:
-            z = torch.tanh(model(data, n_trials=10))
+            z = model(data, n_trials=10)
         H = energy(torch.where(z >= 0, 1.0, -1.0), data)
         minH[idx] = min(H.detach().cpu().tolist())
     os.makedirs(os.path.dirname(sname), exist_ok=True)
